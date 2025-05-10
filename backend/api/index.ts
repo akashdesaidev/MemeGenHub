@@ -1,13 +1,10 @@
-import express, { Request, Response } from "express";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import app from "../server";
 
 // This file is used by Vercel to handle all API routes as a single serverless function
-// It re-exports the main Express app
+// Export a direct handler function for Vercel serverless
 
-export default app;
-
-// Vercel serverless functions handler that forwards to Express
-module.exports = (req: Request, res: Response) => {
-  // Express app handles the request
+export default function handler(req: VercelRequest, res: VercelResponse) {
+  // Pass the request to the Express app
   return app(req, res);
-};
+}
