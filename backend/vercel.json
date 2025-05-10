@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "api/**/*.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 10
+      }
     }
   ],
   "routes": [
@@ -23,10 +26,5 @@
       "src": "/(.*)",
       "dest": "/api/index.ts"
     }
-  ],
-  "functions": {
-    "api/**/*.ts": {
-      "maxDuration": 10
-    }
-  }
+  ]
 }
