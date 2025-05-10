@@ -45,6 +45,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [pagination, setPagination] = useState<PaginationData>({
     totalPages: 1,
     currentPage: 1,
@@ -106,6 +107,7 @@ export default function DashboardPage() {
 
         setIsAuthenticated(true);
         fetchMemes();
+        checkAdminStatus();
       } catch (err) {
         console.error("Invalid token:", err);
         localStorage.removeItem("token");
@@ -121,6 +123,16 @@ export default function DashboardPage() {
       }, 2000);
     };
   }, [router]);
+
+  // Check if user is an admin
+  const checkAdminStatus = async () => {
+    try {
+      const response = await api.get("/auth/me");
+      setIsAdmin(response.data.role === "admin");
+    } catch (err) {
+      console.error("Error checking admin status:", err);
+    }
+  };
 
   // Function to get the full image URL
   const getImageUrl = (imagePath: string | undefined) => {
@@ -262,6 +274,32 @@ export default function DashboardPage() {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
           {error}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="mb-6 p-4 bg-gray-50 rounded-md border border-gray-200">
+          <h2 className="text-xl font-semibold mb-2">Admin Tools</h2>
+          <div className="flex space-x-4">
+            <Link
+              href="/dashboard/flagged-comments"
+              className="text-primary hover:underline flex items-center"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-1"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Flagged Comments
+            </Link>
+          </div>
         </div>
       )}
 

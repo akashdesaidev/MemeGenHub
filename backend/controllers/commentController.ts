@@ -10,14 +10,24 @@ export const getComments = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
-    const comments = await Comment.find({ meme: memeId })
+    // Only show flagged comments to admins
+    const isAdmin = req.user && "role" in req.user && req.user.role === "admin";
+    const query = { meme: memeId };
+
+    if (!isAdmin) {
+      // For non-admin users, filter out flagged comments
+      Object.assign(query, { flagged: { $ne: true } });
+    }
+
+    const comments = await Comment.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate("creator", "name image")
+      .select("text creator createdAt flagged flagCount")
       .lean();
 
-    const total = await Comment.countDocuments({ meme: memeId });
+    const total = await Comment.countDocuments(query);
 
     res.status(200).json({
       comments,
@@ -134,5 +144,59 @@ export const flagComment = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error flagging comment:", error);
     res.status(500).json({ message: "Failed to flag comment" });
+  }
+};
+
+// Get all flagged comments (admin only)
+export const getFlaggedComments = async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const skip = (page - 1) * limit;
+
+    const comments = await Comment.find({ flagged: true })
+      .sort({ flagCount: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("creator", "name image")
+      .populate("meme", "title imageUrl")
+      .select("text creator meme createdAt flagged flagCount")
+      .lean();
+
+    const total = await Comment.countDocuments({ flagged: true });
+
+    res.status(200).json({
+      comments,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total,
+    });
+  } catch (error) {
+    console.error("Error fetching flagged comments:", error);
+    res.status(500).json({ message: "Failed to fetch flagged comments" });
+  }
+};
+
+// Unflag a comment (admin only)
+export const unflagComment = async (req: Request, res: Response) => {
+  try {
+    const { commentId } = req.params;
+
+    // Find the comment
+    const comment = await Comment.findById(commentId);
+
+    if (!comment) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    // Reset flag count and status
+    comment.flagged = false;
+    comment.flagCount = 0;
+    await comment.save();
+
+    res.status(200).json({ message: "Comment unflagged successfully" });
+  } catch (error) {
+    console.error("Error unflagging comment:", error);
+    res.status(500).json({ message: "Failed to unflag comment" });
   }
 };

@@ -51,6 +51,7 @@ router.get("/users/:userId", getUserById);
 
 // Protected routes
 router.get("/profile", protect, getProfile);
+router.get("/me", protect, getProfile);
 router.put("/profile", protect, upload.single("profileImage"), updateProfile);
 router.put("/change-password", protect, changePassword);
 

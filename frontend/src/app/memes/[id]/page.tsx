@@ -34,7 +34,8 @@ interface Comment {
   text: string;
   creator: Creator;
   createdAt: string;
-  flagged?: boolean;
+  flagged: boolean;
+  flagCount: number;
 }
 
 export default function MemeDetailPage({ params }: { params: { id: string } }) {
@@ -109,6 +110,14 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
   const fetchComments = async () => {
     try {
       const response = await api.get(`/comments/${params.id}`);
+      // Update local flagged comments set based on server data
+      const newFlaggedComments = new Set<string>();
+      (response.data.comments || []).forEach((comment: Comment) => {
+        if (comment.flagged || comment.flagCount > 0) {
+          newFlaggedComments.add(comment._id);
+        }
+      });
+      setFlaggedComments(newFlaggedComments);
       setComments(response.data.comments || []);
     } catch (err: any) {
       console.error("Error fetching comments:", err);
@@ -230,6 +239,21 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
 
       // Add to local flagged set to prevent multiple flags
       setFlaggedComments((prev) => new Set([...prev, commentId]));
+
+      // Update the comment in the local state
+      setComments((prevComments) =>
+        prevComments.map((comment) => {
+          if (comment._id === commentId) {
+            const newFlagCount = (comment.flagCount || 0) + 1;
+            return {
+              ...comment,
+              flagCount: newFlagCount,
+              flagged: newFlagCount >= 3 || comment.flagged,
+            };
+          }
+          return comment;
+        })
+      );
 
       // Show a brief message
       alert("Comment has been flagged for review");
@@ -452,9 +476,14 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
                 <div
                   key={comment._id}
                   className={`border-b border-gray-100 pb-4 ${
-                    comment.flagged ? "bg-red-50" : ""
+                    comment.flagged ? "bg-red-50 p-3 rounded-md" : ""
                   }`}
                 >
+                  {comment.flagged && (
+                    <div className="bg-red-100 text-red-700 text-xs px-3 py-1 rounded-md mb-2">
+                      This comment has been flagged as inappropriate
+                    </div>
+                  )}
                   <div className="flex items-start">
                     <div className="relative h-8 w-8 rounded-full overflow-hidden mr-3">
                       <Image
@@ -489,23 +518,33 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
                             onClick={() => handleFlagComment(comment._id)}
                             disabled={
                               flaggingComment === comment._id ||
-                              flaggedComments.has(comment._id)
+                              flaggedComments.has(comment._id) ||
+                              comment.flagged
                             }
                             className={`text-xs px-2 py-1 rounded ${
-                              flaggedComments.has(comment._id)
+                              flaggedComments.has(comment._id) ||
+                              comment.flagged
                                 ? "bg-gray-100 text-gray-500"
                                 : "bg-red-50 text-red-500 hover:bg-red-100"
                             }`}
                             title={
                               flaggedComments.has(comment._id)
                                 ? "You've already flagged this comment"
-                                : "Flag inappropriate content"
+                                : comment.flagged
+                                  ? "This comment has been flagged"
+                                  : "Flag inappropriate content"
                             }
                           >
                             {flaggingComment === comment._id ? (
                               <span>Flagging...</span>
-                            ) : flaggedComments.has(comment._id) ? (
-                              <span>Flagged</span>
+                            ) : flaggedComments.has(comment._id) ||
+                              comment.flagged ? (
+                              <span>
+                                Flagged{" "}
+                                {comment.flagCount > 0
+                                  ? `(${comment.flagCount})`
+                                  : ""}
+                              </span>
                             ) : (
                               <span>Flag</span>
                             )}

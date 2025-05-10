@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import User from "../models/User";
 
 interface DecodedToken {
   userId: string;
@@ -15,6 +16,7 @@ declare module "express" {
       id: string;
       email?: string;
       name?: string;
+      role?: string;
     };
   }
 }
@@ -131,5 +133,39 @@ export const optionalAuth = async (
     // Continue without authentication
     console.error("Error in optionalAuth:", error);
     next();
+  }
+};
+
+// Admin only middleware
+export const adminOnly = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    // Get user from database to check role
+    const user = await User.findById(req.user.id).select("role");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Not authorized, admin access required" });
+    }
+
+    // Add role to user object in request
+    req.user.role = user.role;
+
+    next();
+  } catch (error) {
+    console.error("Admin authorization error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };

@@ -175,6 +175,7 @@ export const getProfile = async (req: Request, res: Response) => {
     // Find user with timeout handling
     let user;
     try {
+      // Explicitly select all fields except password, including role
       user = await User.findById(userId).select("-password").maxTimeMS(20000);
     } catch (dbError) {
       console.error("Database error during profile lookup:", dbError);
@@ -188,7 +189,24 @@ export const getProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.json(user);
+    // Ensure role is included in the response
+    const userResponse = user.toObject();
+
+    // Set default role if missing
+    if (!userResponse.role) {
+      userResponse.role = "user";
+
+      // Update the user in the database
+      try {
+        user.role = "user";
+        await user.save();
+      } catch (saveError) {
+        console.error("Error saving user role:", saveError);
+        // Continue anyway, we'll just return the default role
+      }
+    }
+
+    res.json(userResponse);
   } catch (error) {
     console.error("Get profile error:", error);
     res.status(500).json({
