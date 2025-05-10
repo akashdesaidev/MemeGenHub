@@ -172,7 +172,18 @@ export const getProfile = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await User.findById(userId).select("-password");
+    // Find user with timeout handling
+    let user;
+    try {
+      user = await User.findById(userId).select("-password").maxTimeMS(20000);
+    } catch (dbError) {
+      console.error("Database error during profile lookup:", dbError);
+      return res.status(500).json({
+        message: "Database connection error",
+        details: "Could not retrieve profile information",
+      });
+    }
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -180,7 +191,10 @@ export const getProfile = async (req: Request, res: Response) => {
     res.json(user);
   } catch (error) {
     console.error("Get profile error:", error);
-    res.status(500).json({ message: "Server error while fetching profile" });
+    res.status(500).json({
+      message: "Server error while fetching profile",
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined,
+    });
   }
 };
 
@@ -217,8 +231,18 @@ export const updateProfile = async (req: Request, res: Response) => {
 
     const { name, bio } = req.body;
 
-    // Find user
-    const user = await User.findById(userId);
+    // Find user with timeout handling
+    let user;
+    try {
+      user = await User.findById(userId).maxTimeMS(20000);
+    } catch (dbError) {
+      console.error("Database error during user lookup:", dbError);
+      return res.status(500).json({
+        message: "Database connection error",
+        details: "Could not retrieve user information",
+      });
+    }
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -229,12 +253,31 @@ export const updateProfile = async (req: Request, res: Response) => {
 
     // Handle profile image if provided
     if (req.file) {
-      // In a real app, you would upload the file to a storage service like AWS S3
-      // For now, we'll just store the file path
-      user.image = `/uploads/${req.file.filename}`;
+      try {
+        // Import dynamically to avoid issues with Vercel build
+        const { uploadToCloudinary } = await import("../utils/cloudinary");
+
+        // Upload to Cloudinary
+        const imageUrl = await uploadToCloudinary(req.file);
+
+        if (imageUrl) {
+          user.image = imageUrl;
+        }
+      } catch (uploadError) {
+        console.error("Image upload error:", uploadError);
+        // Don't fail the entire request if just the image upload fails
+      }
     }
 
-    await user.save();
+    try {
+      await user.save();
+    } catch (saveError) {
+      console.error("Error saving user profile:", saveError);
+      return res.status(500).json({
+        message: "Failed to update profile",
+        details: "Database operation failed",
+      });
+    }
 
     // Return updated user without password
     const updatedUser = user.toObject();
@@ -243,7 +286,10 @@ export const updateProfile = async (req: Request, res: Response) => {
     res.json(updatedUser);
   } catch (error) {
     console.error("Update profile error:", error);
-    res.status(500).json({ message: "Server error while updating profile" });
+    res.status(500).json({
+      message: "Server error while updating profile",
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined,
+    });
   }
 };
 
