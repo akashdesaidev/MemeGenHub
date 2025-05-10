@@ -33,11 +33,13 @@ async function dbConnect() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+      serverSelectionTimeoutMS: 30000, // Increased from 5000 to 30000ms
+      socketTimeoutMS: 45000, // Add socket timeout
+      family: 4, // Use IPv4, skip trying IPv6
       maxPoolSize: 10, // Maintain up to 10 socket connections
     };
 
-    console.log(`Connecting to MongoDB at ${MONGODB_URI}`);
+    console.log(`Connecting to MongoDB at ${MONGODB_URI.substring(0, 20)}...`);
 
     cached.promise = mongoose
       .connect(MONGODB_URI, opts)

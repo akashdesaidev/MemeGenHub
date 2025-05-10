@@ -14,8 +14,25 @@ export const signup = async (req: Request, res: Response) => {
   try {
     const { name, email, password } = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    if (!email || !password || !name) {
+      return res.status(400).json({
+        message: "Missing required fields",
+        details: "Name, email and password are required",
+      });
+    }
+
+    // Check if user already exists - with timeout handling
+    let existingUser;
+    try {
+      existingUser = await User.findOne({ email }).maxTimeMS(20000); // Increase operation timeout
+    } catch (dbError) {
+      console.error("Database error during user lookup:", dbError);
+      return res.status(500).json({
+        message: "Database connection error",
+        details: "Could not check for existing user",
+      });
+    }
+
     if (existingUser) {
       return res
         .status(400)
@@ -33,7 +50,15 @@ export const signup = async (req: Request, res: Response) => {
       password: hashedPassword,
     });
 
-    await user.save();
+    try {
+      await user.save();
+    } catch (saveError) {
+      console.error("Error saving user:", saveError);
+      return res.status(500).json({
+        message: "Failed to create user account",
+        details: "Database operation failed",
+      });
+    }
 
     // Ensure we have a valid ObjectId
     if (!isValidObjectId(user._id.toString())) {
@@ -59,7 +84,10 @@ export const signup = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Signup error:", error);
-    res.status(500).json({ message: "Server error during registration" });
+    res.status(500).json({
+      message: "Server error during registration",
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined,
+    });
   }
 };
 
@@ -68,14 +96,38 @@ export const signin = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email
-    const user = await User.findOne({ email });
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Missing required fields",
+        details: "Email and password are required",
+      });
+    }
+
+    // Find user by email with timeout handling
+    let user;
+    try {
+      user = await User.findOne({ email }).maxTimeMS(20000); // Increase operation timeout
+    } catch (dbError) {
+      console.error("Database error during user lookup:", dbError);
+      return res.status(500).json({
+        message: "Database connection error",
+        details: "Could not retrieve user information",
+      });
+    }
+
     if (!user) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
     // Check password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    let isPasswordValid;
+    try {
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    } catch (error) {
+      console.error("Password comparison error:", error);
+      return res.status(500).json({ message: "Error verifying credentials" });
+    }
+
     if (!isPasswordValid) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
@@ -104,7 +156,10 @@ export const signin = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Signin error:", error);
-    res.status(500).json({ message: "Server error during login" });
+    res.status(500).json({
+      message: "Server error during login",
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined,
+    });
   }
 };
 

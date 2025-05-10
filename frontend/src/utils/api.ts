@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_URL = "https://meme-gen-hub.vercel.app/api";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://meme-gen-hub.vercel.app/api";
 // Flag to prevent redirect loops
 let isRedirecting = false;
 
