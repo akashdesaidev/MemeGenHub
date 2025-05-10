@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
-
+import api from "@/utils/api";
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
@@ -154,17 +154,10 @@ export default function Header() {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
+      const response = await api.get("/auth/profile");
 
-      const response = await fetch("http://localhost:5000/api/auth/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        // Add cache busting parameter to prevent caching
-        cache: "no-store",
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
+      if (response.status === 200) {
+        const userData = response.data;
         console.log("Profile data received:", userData);
 
         // Update user name if available
