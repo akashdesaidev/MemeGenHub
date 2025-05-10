@@ -23,10 +23,5 @@
         }
       ]
     }
-  ],
-  "env": {
-    "NEXTAUTH_URL": "https://imagegenhub.vercel.app",
-    "NEXTAUTH_SECRET": "@nextauth_secret",
-    "NEXT_PUBLIC_API_URL": "https://imagegenhub-backend.vercel.app/api"
-  }
+  ]
 }
