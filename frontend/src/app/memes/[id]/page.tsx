@@ -110,13 +110,20 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
   const fetchComments = async () => {
     try {
       const response = await api.get(`/comments/${params.id}`);
-      // Update local flagged comments set based on server data
+
+      // Initialize flagged comments set from server data
       const newFlaggedComments = new Set<string>();
-      (response.data.comments || []).forEach((comment: Comment) => {
-        if (comment.flagged || comment.flagCount > 0) {
-          newFlaggedComments.add(comment._id);
-        }
-      });
+
+      // Add comments flagged by the current user
+      if (
+        response.data.userFlaggedComments &&
+        Array.isArray(response.data.userFlaggedComments)
+      ) {
+        response.data.userFlaggedComments.forEach((commentId: string) => {
+          newFlaggedComments.add(commentId);
+        });
+      }
+
       setFlaggedComments(newFlaggedComments);
       setComments(response.data.comments || []);
     } catch (err: any) {
@@ -229,6 +236,7 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
 
     // Prevent multiple flags from the same user
     if (flaggedComments.has(commentId)) {
+      alert("You have already flagged this comment");
       return;
     }
 
@@ -259,7 +267,18 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
       alert("Comment has been flagged for review");
     } catch (err: any) {
       console.error("Error flagging comment:", err);
-      alert(err.response?.data?.message || "Failed to flag comment");
+
+      // If the error is because the user already flagged this comment,
+      // update the local state to reflect that
+      if (
+        err.response?.status === 400 &&
+        err.response?.data?.message?.includes("already flagged")
+      ) {
+        setFlaggedComments((prev) => new Set([...prev, commentId]));
+        alert("You have already flagged this comment");
+      } else {
+        alert(err.response?.data?.message || "Failed to flag comment");
+      }
     } finally {
       setFlaggingComment(null);
     }
@@ -518,35 +537,30 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
                             onClick={() => handleFlagComment(comment._id)}
                             disabled={
                               flaggingComment === comment._id ||
-                              flaggedComments.has(comment._id) ||
-                              comment.flagged
+                              flaggedComments.has(comment._id)
                             }
                             className={`text-xs px-2 py-1 rounded ${
-                              flaggedComments.has(comment._id) ||
-                              comment.flagged
+                              flaggedComments.has(comment._id)
                                 ? "bg-gray-100 text-gray-500"
                                 : "bg-red-50 text-red-500 hover:bg-red-100"
                             }`}
                             title={
                               flaggedComments.has(comment._id)
                                 ? "You've already flagged this comment"
-                                : comment.flagged
-                                  ? "This comment has been flagged"
-                                  : "Flag inappropriate content"
+                                : "Flag inappropriate content"
                             }
                           >
                             {flaggingComment === comment._id ? (
                               <span>Flagging...</span>
-                            ) : flaggedComments.has(comment._id) ||
-                              comment.flagged ? (
+                            ) : flaggedComments.has(comment._id) ? (
+                              <span>Flagged</span>
+                            ) : (
                               <span>
-                                Flagged{" "}
+                                Flag
                                 {comment.flagCount > 0
-                                  ? `(${comment.flagCount})`
+                                  ? ` (${comment.flagCount})`
                                   : ""}
                               </span>
-                            ) : (
-                              <span>Flag</span>
                             )}
                           </button>
                         )}

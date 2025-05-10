@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Comment from "../models/Comment";
+import CommentFlag from "../models/CommentFlag";
 import Meme from "../models/Meme";
 
 // Get comments for a meme
@@ -27,10 +28,25 @@ export const getComments = async (req: Request, res: Response) => {
       .select("text creator createdAt flagged flagCount")
       .lean();
 
+    // If user is authenticated, check which comments they've flagged
+    let userFlaggedComments: string[] = [];
+    if (req.user) {
+      const userId = req.user.id;
+      const commentIds = comments.map((comment) => comment._id);
+
+      const userFlags = await CommentFlag.find({
+        comment: { $in: commentIds },
+        user: userId,
+      }).select("comment");
+
+      userFlaggedComments = userFlags.map((flag) => flag.comment.toString());
+    }
+
     const total = await Comment.countDocuments(query);
 
     res.status(200).json({
       comments,
+      userFlaggedComments,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
     });
@@ -130,6 +146,24 @@ export const flagComment = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Comment not found" });
     }
 
+    // Check if user has already flagged this comment
+    const existingFlag = await CommentFlag.findOne({
+      comment: commentId,
+      user: userId,
+    });
+
+    if (existingFlag) {
+      return res
+        .status(400)
+        .json({ message: "You have already flagged this comment" });
+    }
+
+    // Create a new flag record
+    await CommentFlag.create({
+      comment: commentId,
+      user: userId,
+    });
+
     // Increment flag count and set flagged to true if threshold reached
     comment.flagCount += 1;
 
@@ -193,6 +227,9 @@ export const unflagComment = async (req: Request, res: Response) => {
     comment.flagged = false;
     comment.flagCount = 0;
     await comment.save();
+
+    // Remove all flag records for this comment
+    await CommentFlag.deleteMany({ comment: commentId });
 
     res.status(200).json({ message: "Comment unflagged successfully" });
   } catch (error) {
