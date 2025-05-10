@@ -43,6 +43,18 @@ export default function CreateMemePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // New states for animation
+  const [topTextAnimating, setTopTextAnimating] = useState(false);
+  const [bottomTextAnimating, setBottomTextAnimating] = useState(false);
+  const [topTextPosition, setTopTextPosition] = useState({ x: 50, y: 10 }); // % values
+  const [bottomTextPosition, setBottomTextPosition] = useState({
+    x: 50,
+    y: 90,
+  }); // % values
+  const [isDraggingTop, setIsDraggingTop] = useState(false);
+  const [isDraggingBottom, setIsDraggingBottom] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [showOverlayText, setShowOverlayText] = useState(true);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -54,19 +66,8 @@ export default function CreateMemePage() {
     }
   }, [router]);
 
-  useEffect(() => {
-    // Generate preview when text, color, font size, or image changes
-    if (selectedTemplate || uploadedImage) {
-      generatePreview();
-    }
-  }, [
-    topText,
-    bottomText,
-    fontSize,
-    textColor,
-    selectedTemplate,
-    uploadedImage,
-  ]);
+  // We don't need to auto-generate preview anymore, as we'll only use the canvas for final image
+  // The draggable overlay text will be the only thing visible during editing
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId);
@@ -96,54 +97,200 @@ export default function CreateMemePage() {
     return "";
   };
 
-  const generatePreview = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
-    img.src = getImageUrl();
-
-    img.onload = () => {
-      // Set canvas dimensions to match image aspect ratio
-      const aspectRatio = img.width / img.height;
-      canvas.width = 800;
-      canvas.height = 800 / aspectRatio;
-
-      // Clear canvas and draw image
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      // Set text style
-      ctx.textAlign = "center";
-      ctx.fillStyle = textColor;
-      ctx.strokeStyle = "black";
-      ctx.lineWidth = 4;
-
-      // Calculate font size based on canvas width
-      const fontSizeScaled = (fontSize / 64) * canvas.width * 0.08;
-      ctx.font = `bold ${fontSizeScaled}px Impact, sans-serif`;
-
-      // Draw top text
-      if (topText) {
-        ctx.fillStyle = textColor;
-        ctx.strokeText(topText, canvas.width / 2, fontSizeScaled + 10);
-        ctx.fillText(topText, canvas.width / 2, fontSizeScaled + 10);
+  // Handle drag start for text elements
+  const handleDragStart =
+    (textType: "top" | "bottom") => (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (textType === "top") {
+        setIsDraggingTop(true);
+      } else {
+        setIsDraggingBottom(true);
       }
-
-      // Draw bottom text
-      if (bottomText) {
-        ctx.fillStyle = textColor;
-        ctx.strokeText(bottomText, canvas.width / 2, canvas.height - 20);
-        ctx.fillText(bottomText, canvas.width / 2, canvas.height - 20);
-      }
-
-      // Convert canvas to data URL for preview
-      setPreviewUrl(canvas.toDataURL("image/png"));
     };
+
+  // Modified function to handle mouse move with direct pixel tracking
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingTop && !isDraggingBottom) return;
+
+    const container = previewContainerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+
+    // Get position relative to the container
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    // Constrain to container bounds
+    const boundedX = Math.max(0, Math.min(100, x));
+    const boundedY = Math.max(0, Math.min(100, y));
+
+    if (isDraggingTop) {
+      setTopTextPosition({ x: boundedX, y: boundedY });
+    } else if (isDraggingBottom) {
+      setBottomTextPosition({ x: boundedX, y: boundedY });
+    }
+  };
+
+  // Handle drag end
+  const handleDragEnd = () => {
+    setIsDraggingTop(false);
+    setIsDraggingBottom(false);
+  };
+
+  // Add event listeners for mouse up event
+  useEffect(() => {
+    const handleMouseUp = () => {
+      setIsDraggingTop(false);
+      setIsDraggingBottom(false);
+    };
+
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  // Handle touch move for mobile devices
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingTop && !isDraggingBottom) return;
+
+    // Prevent scrolling while dragging
+    e.preventDefault();
+
+    const container = previewContainerRef.current;
+    if (!container) return;
+
+    const touch = e.touches[0];
+    const rect = container.getBoundingClientRect();
+    const x = ((touch.clientX - rect.left) / rect.width) * 100;
+    const y = ((touch.clientY - rect.top) / rect.height) * 100;
+
+    // Constrain to container bounds
+    const boundedX = Math.max(0, Math.min(100, x));
+    const boundedY = Math.max(0, Math.min(100, y));
+
+    if (isDraggingTop) {
+      setTopTextPosition({ x: boundedX, y: boundedY });
+    } else if (isDraggingBottom) {
+      setBottomTextPosition({ x: boundedX, y: boundedY });
+    }
+  };
+
+  // Handle touch end
+  const handleTouchEnd = () => {
+    setIsDraggingTop(false);
+    setIsDraggingBottom(false);
+  };
+
+  // Add event listeners for touch events
+  useEffect(() => {
+    const handleTouchEndGlobal = () => {
+      setIsDraggingTop(false);
+      setIsDraggingBottom(false);
+    };
+
+    window.addEventListener("touchend", handleTouchEndGlobal);
+    return () => {
+      window.removeEventListener("touchend", handleTouchEndGlobal);
+    };
+  }, []);
+
+  // This function will now only be used during the save process
+  const generateFinalImage = () => {
+    return new Promise<string>((resolve, reject) => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        reject("Canvas not available");
+        return;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject("Canvas context not available");
+        return;
+      }
+
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.src = getImageUrl();
+
+      img.onload = () => {
+        // Set canvas dimensions to match image aspect ratio
+        const aspectRatio = img.width / img.height;
+        canvas.width = 800;
+        canvas.height = 800 / aspectRatio;
+
+        // Clear canvas and draw image
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Set text style
+        ctx.textAlign = "center";
+        ctx.fillStyle = textColor;
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 2;
+
+        // Calculate font size based on canvas width
+        const fontSizeScaled = (fontSize / 64) * canvas.width * 0.08;
+        ctx.font = `bold ${fontSizeScaled}px Impact, sans-serif`;
+
+        // Use direct percentage positioning
+        const topX = (topTextPosition.x / 100) * canvas.width;
+        const topY = (topTextPosition.y / 100) * canvas.height;
+        const bottomX = (bottomTextPosition.x / 100) * canvas.width;
+        const bottomY = (bottomTextPosition.y / 100) * canvas.height;
+
+        // Draw top text at exact position
+        if (topText) {
+          ctx.fillStyle = textColor;
+
+          // Add text shadow for better visibility
+          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+
+          // Use middle baseline for vertical centering
+          ctx.textBaseline = "middle";
+          ctx.fillText(topText, topX, topY);
+
+          // Reset shadow for stroke
+          ctx.shadowColor = "transparent";
+          ctx.strokeText(topText, topX, topY);
+        }
+
+        // Draw bottom text at exact position
+        if (bottomText) {
+          ctx.fillStyle = textColor;
+
+          // Add text shadow for better visibility
+          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+
+          // Use middle baseline for vertical centering
+          ctx.textBaseline = "middle";
+          ctx.fillText(bottomText, bottomX, bottomY);
+
+          // Reset shadow for stroke
+          ctx.shadowColor = "transparent";
+          ctx.strokeText(bottomText, bottomX, bottomY);
+        }
+
+        // Add a small delay to ensure canvas is fully rendered before converting to data URL
+        setTimeout(() => {
+          // Convert canvas to data URL for final image
+          const finalImageData = canvas.toDataURL("image/png");
+          resolve(finalImageData);
+        }, 100);
+      };
+
+      img.onerror = () => {
+        reject("Failed to load image");
+      };
+    });
   };
 
   const handleSaveMeme = async (status: "draft" | "published") => {
@@ -161,35 +308,36 @@ export default function CreateMemePage() {
       setIsLoading(true);
       setError("");
 
-      // Prepare the image data
-      let imageData = "";
-      if (previewUrl) {
-        imageData = previewUrl;
-      } else if (uploadedImage) {
-        imageData = uploadedImage;
-      } else if (selectedTemplate) {
-        const template = templates.find((t) => t.id === selectedTemplate);
-        imageData = template?.url || "";
-      }
+      try {
+        // Generate the final image with text rendered on canvas
+        const finalImageData = await generateFinalImage();
 
-      // Send request to create meme using our API utility
-      const response = await api.post("/memes", {
-        title,
-        topText,
-        bottomText,
-        textColor,
-        fontSize,
-        imageData,
-        status,
-      });
+        // Send request to create meme using our API utility
+        const response = await api.post("/memes", {
+          title,
+          topText,
+          bottomText,
+          textColor,
+          fontSize,
+          imageData: finalImageData,
+          status,
+          topTextPosition,
+          bottomTextPosition,
+        });
 
-      if (response.data) {
-        // Redirect to the meme page or dashboard
-        if (status === "published") {
-          router.push(`/memes/${response.data._id}`);
-        } else {
-          router.push("/dashboard");
+        if (response.data) {
+          // Redirect to the meme page or dashboard
+          if (status === "published") {
+            router.push(`/memes/${response.data._id}`);
+          } else {
+            router.push("/dashboard");
+          }
         }
+      } catch (err: any) {
+        setError(
+          typeof err === "string" ? err : "Failed to generate meme image"
+        );
+        console.error("Error generating image:", err);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to save meme");
@@ -197,6 +345,19 @@ export default function CreateMemePage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Update the text input handlers to trigger animations
+  const handleTopTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTopText(e.target.value);
+    setTopTextAnimating(true);
+    setTimeout(() => setTopTextAnimating(false), 500);
+  };
+
+  const handleBottomTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBottomText(e.target.value);
+    setBottomTextAnimating(true);
+    setTimeout(() => setBottomTextAnimating(false), 500);
   };
 
   // Don't render the form until we confirm the user is authenticated
@@ -217,6 +378,21 @@ export default function CreateMemePage() {
           {error}
         </div>
       )}
+
+      {/* Mobile-specific controls for small screens */}
+      <div className="lg:hidden mb-6">
+        <div className="card">
+          <h2 className="text-xl font-semibold mb-4">Meme Title</h2>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full p-3 border rounded-md text-lg"
+            placeholder="Enter meme title"
+            disabled={isLoading}
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column - Template Selection */}
@@ -252,13 +428,18 @@ export default function CreateMemePage() {
 
           <div className="card">
             <h2 className="text-xl font-semibold mb-4">Or Upload Your Own</h2>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="w-full"
-              disabled={isLoading}
-            />
+            <label className="block w-full">
+              <span className="sr-only">Choose image</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-4
+                file:rounded-md file:border-0 file:text-sm file:font-semibold
+                file:bg-primary file:text-white hover:file:bg-primary/90"
+                disabled={isLoading}
+              />
+            </label>
           </div>
         </div>
 
@@ -267,7 +448,7 @@ export default function CreateMemePage() {
           <div className="card">
             <h2 className="text-xl font-semibold mb-4">Preview</h2>
 
-            <div className="mb-4">
+            <div className="mb-4 hidden lg:block">
               <label className="block text-sm font-medium mb-1">Title</label>
               <input
                 type="text"
@@ -280,23 +461,108 @@ export default function CreateMemePage() {
             </div>
 
             {selectedTemplate || uploadedImage ? (
-              <div className="relative w-full h-80">
-                {/* Hidden canvas for meme generation */}
+              <div
+                className="relative w-full h-80"
+                ref={previewContainerRef}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleDragEnd}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                {/* Hidden canvas for final image generation only */}
                 <canvas ref={canvasRef} style={{ display: "none" }} />
 
-                {/* Display the preview image */}
+                {/* Display the base image */}
                 <Image
-                  src={previewUrl || getImageUrl()}
+                  src={getImageUrl()}
                   alt="Meme Preview"
                   fill
                   className="object-contain"
+                  priority
                 />
+
+                {/* Text overlays with drag functionality */}
+                {topText && (
+                  <div
+                    className={`absolute text-center font-bold transition-all duration-300 ease-in-out ${
+                      topTextAnimating
+                        ? "opacity-0 transform -translate-y-2"
+                        : "opacity-100"
+                    } ${isDraggingTop ? "cursor-grabbing" : "cursor-grab"}`}
+                    style={{
+                      fontSize: `${fontSize * 0.5}px`,
+                      color: textColor,
+                      zIndex: 10,
+                      pointerEvents: "auto",
+                      letterSpacing: "0.05rem",
+                      position: "absolute",
+                      fontWeight: "bold",
+                      textShadow: "1px 1px 2px rgba(0, 0, 0, 0.5)",
+                      left: `${topTextPosition.x}%`,
+                      top: `${topTextPosition.y}%`,
+                      transform: "translate(-50%, -50%)", // Center the text at the exact position
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "4px",
+                      fontFamily: "Impact, sans-serif",
+                    }}
+                    onMouseDown={handleDragStart("top")}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      setIsDraggingTop(true);
+                    }}
+                  >
+                    {topText}
+                  </div>
+                )}
+
+                {bottomText && (
+                  <div
+                    className={`absolute text-center font-bold transition-all duration-300 ease-in-out ${
+                      bottomTextAnimating
+                        ? "opacity-0 transform translate-y-2"
+                        : "opacity-100"
+                    } ${isDraggingBottom ? "cursor-grabbing" : "cursor-grab"}`}
+                    style={{
+                      fontSize: `${fontSize * 0.5}px`,
+                      color: textColor,
+                      zIndex: 10,
+                      pointerEvents: "auto",
+                      letterSpacing: "0.05rem",
+                      position: "absolute",
+                      fontWeight: "bold",
+                      textShadow: "1px 1px 2px rgba(0, 0, 0, 0.5)",
+                      left: `${bottomTextPosition.x}%`,
+                      top: `${bottomTextPosition.y}%`,
+                      transform: "translate(-50%, -50%)", // Center the text at the exact position
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "4px",
+                      fontFamily: "Impact, sans-serif",
+                    }}
+                    onMouseDown={handleDragStart("bottom")}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      setIsDraggingBottom(true);
+                    }}
+                  >
+                    {bottomText}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex items-center justify-center h-80 bg-gray-100 rounded-md">
                 <p className="text-gray-500">
                   Select a template or upload an image
                 </p>
+              </div>
+            )}
+
+            {(selectedTemplate || uploadedImage) && (topText || bottomText) && (
+              <div className="mt-2 text-sm text-gray-500 text-center">
+                Drag text to reposition it on the image
               </div>
             )}
           </div>
@@ -307,34 +573,34 @@ export default function CreateMemePage() {
           <div className="card">
             <h2 className="text-xl font-semibold mb-4">Customize Text</h2>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Top Text</label>
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">Top Text</label>
               <input
                 type="text"
                 value={topText}
-                onChange={(e) => setTopText(e.target.value)}
-                className="w-full p-2 border rounded-md"
+                onChange={handleTopTextChange}
+                className="w-full p-3 border rounded-md text-lg"
                 placeholder="Enter top text"
                 disabled={isLoading}
               />
             </div>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">
                 Bottom Text
               </label>
               <input
                 type="text"
                 value={bottomText}
-                onChange={(e) => setBottomText(e.target.value)}
-                className="w-full p-2 border rounded-md"
+                onChange={handleBottomTextChange}
+                className="w-full p-3 border rounded-md text-lg"
                 placeholder="Enter bottom text"
                 disabled={isLoading}
               />
             </div>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">
                 Font Size: {fontSize}px
               </label>
               <input
@@ -343,28 +609,28 @@ export default function CreateMemePage() {
                 max="64"
                 value={fontSize}
                 onChange={(e) => setFontSize(parseInt(e.target.value))}
-                className="w-full"
+                className="w-full h-8"
                 disabled={isLoading}
               />
             </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-1">
+            <div className="mb-8">
+              <label className="block text-sm font-medium mb-2">
                 Text Color
               </label>
               <input
                 type="color"
                 value={textColor}
                 onChange={(e) => setTextColor(e.target.value)}
-                className="w-full h-10"
+                className="w-full h-12"
                 disabled={isLoading}
               />
             </div>
 
-            <div className="flex space-x-4">
+            <div className="flex flex-col sm:flex-row gap-4">
               <button
                 type="button"
-                className="btn btn-secondary flex-1"
+                className="btn btn-secondary py-3 text-lg"
                 onClick={() => handleSaveMeme("draft")}
                 disabled={isLoading}
               >
@@ -372,7 +638,7 @@ export default function CreateMemePage() {
               </button>
               <button
                 type="button"
-                className="btn btn-primary flex-1"
+                className="btn btn-primary py-3 text-lg"
                 onClick={() => handleSaveMeme("published")}
                 disabled={isLoading}
               >

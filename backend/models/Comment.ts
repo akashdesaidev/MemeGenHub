@@ -6,6 +6,8 @@ export interface IComment extends Document {
   text: string;
   meme: IMeme["_id"];
   creator: IUser["_id"];
+  flagged: boolean;
+  flagCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +28,14 @@ const CommentSchema: Schema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    flagged: {
+      type: Boolean,
+      default: false,
+    },
+    flagCount: {
+      type: Number,
+      default: 0,
     },
   },
   {

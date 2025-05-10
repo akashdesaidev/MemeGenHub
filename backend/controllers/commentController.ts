@@ -106,3 +106,33 @@ export const deleteComment = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to delete comment" });
   }
 };
+
+// Flag a comment as inappropriate
+export const flagComment = async (req: Request, res: Response) => {
+  try {
+    const { commentId } = req.params;
+    const userId = req.user.id;
+
+    // Find the comment
+    const comment = await Comment.findById(commentId);
+
+    if (!comment) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    // Increment flag count and set flagged to true if threshold reached
+    comment.flagCount += 1;
+
+    // If flag count reaches threshold (e.g., 3), mark as flagged
+    if (comment.flagCount >= 3) {
+      comment.flagged = true;
+    }
+
+    await comment.save();
+
+    res.status(200).json({ message: "Comment flagged successfully" });
+  } catch (error) {
+    console.error("Error flagging comment:", error);
+    res.status(500).json({ message: "Failed to flag comment" });
+  }
+};

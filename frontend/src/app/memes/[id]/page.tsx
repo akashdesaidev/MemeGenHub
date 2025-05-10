@@ -34,6 +34,7 @@ interface Comment {
   text: string;
   creator: Creator;
   createdAt: string;
+  flagged?: boolean;
 }
 
 export default function MemeDetailPage({ params }: { params: { id: string } }) {
@@ -48,6 +49,10 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
+  const [flaggedComments, setFlaggedComments] = useState<Set<string>>(
+    new Set()
+  );
+  const [flaggingComment, setFlaggingComment] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -202,6 +207,37 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
     if (meme?.originalImageUrl && !imageError) {
       setImageError(true);
       console.log("Using original image URL as fallback");
+    }
+  };
+
+  // Handle flagging a comment
+  const handleFlagComment = async (commentId: string) => {
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      router.push(`/auth/signin?redirect=/memes/${params.id}`);
+      return;
+    }
+
+    // Prevent multiple flags from the same user
+    if (flaggedComments.has(commentId)) {
+      return;
+    }
+
+    try {
+      setFlaggingComment(commentId);
+
+      await api.post(`/comments/${commentId}/flag`);
+
+      // Add to local flagged set to prevent multiple flags
+      setFlaggedComments((prev) => new Set([...prev, commentId]));
+
+      // Show a brief message
+      alert("Comment has been flagged for review");
+    } catch (err: any) {
+      console.error("Error flagging comment:", err);
+      alert(err.response?.data?.message || "Failed to flag comment");
+    } finally {
+      setFlaggingComment(null);
     }
   };
 
@@ -415,7 +451,9 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
               {comments.map((comment) => (
                 <div
                   key={comment._id}
-                  className="border-b border-gray-100 pb-4"
+                  className={`border-b border-gray-100 pb-4 ${
+                    comment.flagged ? "bg-red-50" : ""
+                  }`}
                 >
                   <div className="flex items-start">
                     <div className="relative h-8 w-8 rounded-full overflow-hidden mr-3">
@@ -427,23 +465,52 @@ export default function MemeDetailPage({ params }: { params: { id: string } }) {
                         unoptimized
                       />
                     </div>
-                    <div>
-                      <div className="flex items-center">
-                        {comment.creator._id ? (
-                          <Link
-                            href={`/profile/${comment.creator._id}`}
-                            className="font-medium hover:text-primary mr-2"
-                          >
-                            {comment.creator.name}
-                          </Link>
-                        ) : (
-                          <span className="font-medium mr-2">
-                            {comment.creator.name}
+                    <div className="flex-grow">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {comment.creator._id ? (
+                            <Link
+                              href={`/profile/${comment.creator._id}`}
+                              className="font-medium hover:text-primary mr-2"
+                            >
+                              {comment.creator.name}
+                            </Link>
+                          ) : (
+                            <span className="font-medium mr-2">
+                              {comment.creator.name}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-500">
+                            {formatDate(comment.createdAt)}
                           </span>
+                        </div>
+                        {isAuthenticated && (
+                          <button
+                            onClick={() => handleFlagComment(comment._id)}
+                            disabled={
+                              flaggingComment === comment._id ||
+                              flaggedComments.has(comment._id)
+                            }
+                            className={`text-xs px-2 py-1 rounded ${
+                              flaggedComments.has(comment._id)
+                                ? "bg-gray-100 text-gray-500"
+                                : "bg-red-50 text-red-500 hover:bg-red-100"
+                            }`}
+                            title={
+                              flaggedComments.has(comment._id)
+                                ? "You've already flagged this comment"
+                                : "Flag inappropriate content"
+                            }
+                          >
+                            {flaggingComment === comment._id ? (
+                              <span>Flagging...</span>
+                            ) : flaggedComments.has(comment._id) ? (
+                              <span>Flagged</span>
+                            ) : (
+                              <span>Flag</span>
+                            )}
+                          </button>
                         )}
-                        <span className="text-xs text-gray-500">
-                          {formatDate(comment.createdAt)}
-                        </span>
                       </div>
                       <p className="mt-1">{comment.text}</p>
                     </div>
