@@ -4,6 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import api from "@/utils/api";
+import ReactCrop, {
+  Crop,
+  PixelCrop,
+  centerCrop,
+  makeAspectCrop,
+} from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 
 // Mock templates with local images
 const templates = [
@@ -28,6 +35,18 @@ const templates = [
     url: "/images/templates/template4.jpg",
   },
 ];
+
+// Function to create a centered square crop
+function centerSquareCrop(width: number, height: number): Crop {
+  const size = Math.min(width, height);
+  return {
+    unit: "%",
+    width: (size / width) * 100,
+    height: (size / height) * 100,
+    x: ((width - size) / 2 / width) * 100,
+    y: ((height - size) / 2 / height) * 100,
+  };
+}
 
 export default function CreateMemePage() {
   const router = useRouter();
@@ -56,6 +75,15 @@ export default function CreateMemePage() {
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [showOverlayText, setShowOverlayText] = useState(true);
 
+  // New states for image cropping
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [isCropping, setIsCropping] = useState(false);
+  const [croppedImage, setCroppedImage] = useState<string | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0 });
+  const [aspect, setAspect] = useState<number | undefined>(1); // Default to square (1:1)
+
   useEffect(() => {
     // Check if user is authenticated
     const token = localStorage.getItem("token");
@@ -73,6 +101,8 @@ export default function CreateMemePage() {
     setSelectedTemplate(templateId);
     setUploadedImage(null);
     setPreviewUrl(null);
+    setCroppedImage(null);
+    setIsCropping(false);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,13 +113,65 @@ export default function CreateMemePage() {
         setUploadedImage(event.target?.result as string);
         setSelectedTemplate(null);
         setPreviewUrl(null);
+        setCroppedImage(null);
+        setIsCropping(true);
       };
       reader.readAsDataURL(file);
     }
   };
 
+  // Function to handle image load and set initial crop
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    setImgDimensions({ width, height });
+
+    // Set default crop to centered square
+    const initialCrop = centerSquareCrop(width, height);
+    setCrop(initialCrop);
+  };
+
+  // Function to apply the crop to the image
+  const applyCrop = () => {
+    if (!imgRef.current || !completedCrop) return;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
+    const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
+
+    canvas.width = completedCrop.width;
+    canvas.height = completedCrop.height;
+
+    ctx.drawImage(
+      imgRef.current,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
+      0,
+      0,
+      completedCrop.width,
+      completedCrop.height
+    );
+
+    const croppedImageUrl = canvas.toDataURL("image/jpeg");
+    setCroppedImage(croppedImageUrl);
+    setIsCropping(false);
+  };
+
+  const cancelCrop = () => {
+    setIsCropping(false);
+    if (!croppedImage) {
+      // If no previous crop exists, reset the uploaded image
+      setUploadedImage(null);
+    }
+  };
+
   const getImageUrl = () => {
-    if (uploadedImage) return uploadedImage;
+    if (croppedImage) return croppedImage;
+    if (uploadedImage && !isCropping) return uploadedImage;
     if (selectedTemplate) {
       const template = templates.find((t) => t.id === selectedTemplate);
       return template?.url || "";
@@ -300,7 +382,7 @@ export default function CreateMemePage() {
         return;
       }
 
-      if (!selectedTemplate && !uploadedImage) {
+      if (!selectedTemplate && !uploadedImage && !croppedImage) {
         setError("Please select a template or upload an image");
         return;
       }
@@ -358,6 +440,17 @@ export default function CreateMemePage() {
     setBottomText(e.target.value);
     setBottomTextAnimating(true);
     setTimeout(() => setBottomTextAnimating(false), 500);
+  };
+
+  // Toggle aspect ratio between square (1:1) and free-form (undefined)
+  const toggleAspectRatio = () => {
+    setAspect(aspect ? undefined : 1);
+
+    // If we're switching to square, recalculate the crop
+    if (!aspect && imgRef.current) {
+      const { width, height } = imgRef.current;
+      setCrop(centerSquareCrop(width, height));
+    }
   };
 
   // Don't render the form until we confirm the user is authenticated
@@ -460,7 +553,62 @@ export default function CreateMemePage() {
               />
             </div>
 
-            {selectedTemplate || uploadedImage ? (
+            {/* Cropping UI */}
+            {isCropping && uploadedImage ? (
+              <div className="flex flex-col gap-4">
+                <div
+                  className="relative w-full"
+                  style={{ maxHeight: "400px", overflow: "hidden" }}
+                >
+                  <ReactCrop
+                    crop={crop}
+                    onChange={(c) => setCrop(c)}
+                    onComplete={(c) => setCompletedCrop(c)}
+                    aspect={aspect}
+                    className="max-h-[400px] mx-auto"
+                  >
+                    <img
+                      ref={imgRef}
+                      src={uploadedImage}
+                      alt="Upload for cropping"
+                      onLoad={onImageLoad}
+                      className="max-w-full max-h-[400px] mx-auto"
+                    />
+                  </ReactCrop>
+                </div>
+
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="square-aspect"
+                      checked={aspect === 1}
+                      onChange={toggleAspectRatio}
+                      className="mr-2"
+                    />
+                    <label htmlFor="square-aspect" className="text-sm">
+                      Square aspect ratio (recommended)
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={applyCrop}
+                    className="btn btn-primary py-2 flex-1"
+                    disabled={!completedCrop}
+                  >
+                    Apply Crop
+                  </button>
+                  <button
+                    onClick={cancelCrop}
+                    className="btn btn-secondary py-2 flex-1"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : selectedTemplate || uploadedImage || croppedImage ? (
               <div
                 className="relative w-full h-80"
                 ref={previewContainerRef}
@@ -560,9 +708,23 @@ export default function CreateMemePage() {
               </div>
             )}
 
-            {(selectedTemplate || uploadedImage) && (topText || bottomText) && (
-              <div className="mt-2 text-sm text-gray-500 text-center">
-                Drag text to reposition it on the image
+            {(selectedTemplate || croppedImage) &&
+              (topText || bottomText) &&
+              !isCropping && (
+                <div className="mt-2 text-sm text-gray-500 text-center">
+                  Drag text to reposition it on the image
+                </div>
+              )}
+
+            {/* Show edit button for cropped images */}
+            {croppedImage && uploadedImage && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setIsCropping(true)}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Edit crop
+                </button>
               </div>
             )}
           </div>
@@ -581,7 +743,7 @@ export default function CreateMemePage() {
                 onChange={handleTopTextChange}
                 className="w-full p-3 border rounded-md text-lg"
                 placeholder="Enter top text"
-                disabled={isLoading}
+                disabled={isLoading || isCropping}
               />
             </div>
 
@@ -595,7 +757,7 @@ export default function CreateMemePage() {
                 onChange={handleBottomTextChange}
                 className="w-full p-3 border rounded-md text-lg"
                 placeholder="Enter bottom text"
-                disabled={isLoading}
+                disabled={isLoading || isCropping}
               />
             </div>
 
@@ -610,7 +772,7 @@ export default function CreateMemePage() {
                 value={fontSize}
                 onChange={(e) => setFontSize(parseInt(e.target.value))}
                 className="w-full h-8"
-                disabled={isLoading}
+                disabled={isLoading || isCropping}
               />
             </div>
 
@@ -623,7 +785,7 @@ export default function CreateMemePage() {
                 value={textColor}
                 onChange={(e) => setTextColor(e.target.value)}
                 className="w-full h-12"
-                disabled={isLoading}
+                disabled={isLoading || isCropping}
               />
             </div>
 
@@ -632,7 +794,7 @@ export default function CreateMemePage() {
                 type="button"
                 className="btn btn-secondary py-3 text-lg"
                 onClick={() => handleSaveMeme("draft")}
-                disabled={isLoading}
+                disabled={isLoading || isCropping}
               >
                 {isLoading ? "Saving..." : "Save Draft"}
               </button>
@@ -640,7 +802,7 @@ export default function CreateMemePage() {
                 type="button"
                 className="btn btn-primary py-3 text-lg"
                 onClick={() => handleSaveMeme("published")}
-                disabled={isLoading}
+                disabled={isLoading || isCropping}
               >
                 {isLoading ? "Publishing..." : "Publish"}
               </button>
