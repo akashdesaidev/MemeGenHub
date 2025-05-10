@@ -42,7 +42,7 @@ export default function Header() {
             setUserName(payload.name);
           }
 
-          // Try to fetch user profile
+          // Fetch user profile immediately when token is valid
           fetchUserProfile();
         } else {
           // Invalid token format
@@ -81,11 +81,18 @@ export default function Header() {
   // Add event listener for profile updates
   useEffect(() => {
     const handleProfileUpdate = () => {
+      console.log("Profile update event received, fetching new profile data");
       fetchUserProfile();
     };
 
     window.addEventListener("profile-updated", handleProfileUpdate);
     window.addEventListener("user-login", handleProfileUpdate);
+
+    // Fetch profile on component mount
+    if (localStorage.getItem("token")) {
+      fetchUserProfile();
+    }
+
     return () => {
       window.removeEventListener("profile-updated", handleProfileUpdate);
       window.removeEventListener("user-login", handleProfileUpdate);
@@ -126,7 +133,10 @@ export default function Header() {
   const getImageUrl = (imagePath: string | undefined) => {
     if (!imagePath) return "/images/default-avatar.svg";
 
-    // If the image path already includes http/https, use it as is
+    // If the image is empty string, use default avatar
+    if (imagePath === "") return "/images/default-avatar.svg";
+
+    // Cloudinary URLs already include http, so just return them
     if (imagePath.startsWith("http")) {
       return imagePath;
     }
@@ -149,15 +159,27 @@ export default function Header() {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        // Add cache busting parameter to prevent caching
+        cache: "no-store",
       });
 
       if (response.ok) {
         const userData = await response.json();
+        console.log("Profile data received:", userData);
+
+        // Update user name if available
         if (userData.name) {
           setUserName(userData.name);
         }
+
+        // Update user image if available
         if (userData.image) {
-          setUserImage(getImageUrl(userData.image));
+          const imageUrl = getImageUrl(userData.image);
+          console.log("Setting user image to:", imageUrl);
+          setUserImage(imageUrl);
+        } else {
+          // Set default avatar if image is not available
+          setUserImage("/images/default-avatar.svg");
         }
       } else if (response.status === 401) {
         // Unauthorized - token is invalid or expired
@@ -257,9 +279,11 @@ export default function Header() {
                         fill
                         className="object-cover"
                         unoptimized
-                        onError={() =>
-                          setUserImage("/images/default-avatar.svg")
-                        }
+                        onError={(e) => {
+                          console.log("Image error, using default");
+                          const target = e.target as HTMLImageElement;
+                          target.src = "/images/default-avatar.svg";
+                        }}
                       />
                     </div>
                     <span className="ml-2">{userName || "User"}</span>
@@ -348,9 +372,23 @@ export default function Header() {
                 </Link>
                 <Link
                   href="/profile"
-                  className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-primary hover:bg-gray-50 rounded-md"
+                  className="flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-primary hover:bg-gray-50 rounded-md"
                 >
-                  Profile
+                  <div className="relative h-6 w-6 rounded-full overflow-hidden mr-2">
+                    <Image
+                      src={userImage}
+                      alt="Profile"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                      onError={(e) => {
+                        console.log("Mobile menu image error, using default");
+                        const target = e.target as HTMLImageElement;
+                        target.src = "/images/default-avatar.svg";
+                      }}
+                    />
+                  </div>
+                  <span>{userName || "Profile"}</span>
                 </Link>
                 <Link
                   href="/profile/edit"

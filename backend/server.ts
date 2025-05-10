@@ -30,9 +30,19 @@ if (!process.env.VERCEL) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  process.env.CORS_ORIGIN || "https://memehub-ashy.vercel.app",
+  "http://localhost:3000",
+];
 // CORS configuration with proper origin handling
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
